@@ -1,0 +1,17 @@
+GAL16V8
+DECODE
+
+NC A15 A14 A13 MREQn RDn WRn NC NC GND
+NC NC NC NC NC MEMWRn MEMRDn RAMn ROMn VCC
+
+ROMn   = MREQn + A15 + A14 + A13
+RAMn   = MREQn + /A15
+MEMRDn = MREQn + RDn
+MEMWRn = MREQn + WRn
+
+DESCRIPTION
+Illustrative DIP20 address decoder, not an assigned 7xsys board pinout.
+Active-low ROM select at 0000-1FFF; RAM select at 8000-FFFF.
+Both selects require MREQn low; they are not qualified by RDn/WRn.
+MEMRDn/MEMWRn are separately qualified memory read/write strobes.
+Unused input-only pins need defined board levels. NC is a source marker.

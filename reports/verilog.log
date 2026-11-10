@@ -1,0 +1,2 @@
+PASS: 192 decoder/state cases
+examples/verilog/tb_glue.v:57: $finish called at 1728000 (1ps)

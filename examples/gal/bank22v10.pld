@@ -1,0 +1,18 @@
+GAL22V10
+BANK2
+
+Clock RESET LOAD D0 D1 NC NC NC NC NC NC GND
+NC EXT NC NC NC NC NC NC FLAG Q1 Q0 VCC
+
+Q0.R = /RESET * LOAD * D0 + /RESET * /LOAD * Q0
+Q1.R = /RESET * LOAD * D1 + /RESET * /LOAD * Q1
+FLAG = EXT * Q0 * /Q1
+
+DESCRIPTION
+Illustrative DIP24 synchronous two-bit bank register.
+On rising Clock: RESET high clears, else LOAD high loads D1:D0,
+else Q1:Q0 holds. RESET is synchronous and has priority over LOAD.
+EXT on pin 14 demonstrates using an output-capable pin as an INPUT.
+Q0/Q1/FLAG are continuously driven; there is no external output enable.
+No dedicated asynchronous reset or synchronous preset is requested.
+This is not an approved pin assignment for a physical 7xsys board.

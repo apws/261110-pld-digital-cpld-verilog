@@ -1,0 +1,33 @@
+= PLD, GAL and CPLD design from text
+:title: {docname}
+:revdate: 2026-11-10
+
+Start with link:docs/261110-2209-RESEARCH-PLD-GAL-CPLD-design.adoc[the design/toolchain report].
+The link:docs/261110-2209-REVIEW-Digital-exporters.adoc[Digital source audit] addresses the quoted discussion,
+and link:docs/261110-2209-TEST-local-examples.adoc[the local experiment record] separates tested results from prepared flows.
+
+This is a new standalone workspace under `/home/falken/_/wrk/ver/`.
+It is not a copy of the KiCad or terminal projects. Its Git repository contains the
+research notes, original examples, helper scripts and validation records. Downloaded
+tools, upstream checkouts, rendered reference pages and generated outputs stay local
+and are excluded by `.gitignore`.
+
+For a fresh checkout, provide Python 3, GCC, Make and system Icarus Verilog (`iverilog`
+and `vvp`), then fetch the pinned GALasm source before running the examples:
+
+[source,shell]
+----
+git clone https://github.com/daveho/GALasm.git vendor/GALasm
+git -C vendor/GALasm checkout eeb06645a5ef4a2fd4563908167b9294059a9204
+----
+
+[source,shell]
+----
+python3 tools/check_gal.py
+bash tools/check_verilog.sh
+----
+
+`examples/` contains original illustrative sources. `output/gal/` contains assembled
+JEDEC, pin and fuse reports. These demonstrate tool capability; their pinouts are not
+7xsys board assignments. On the original machine, `vendor/` retains the inspected upstream source checkouts,
+their own licensing, and a locally extracted Icarus package; nothing was installed globally.

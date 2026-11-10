@@ -1,0 +1,128 @@
+= Local evidence: equation assembly, JEDEC evaluation and Verilog simulation
+:title: {docname}
+:revdate: 2026-11-10
+:toc:
+
+== What was actually completed
+
+Created `/home/falken/_/wrk/ver/261110-pld-digital-cpld-verilog/` as a standalone workspace.
+No other project was copied or edited. Its original examples and repeatable checks are:
+
+[cols="2,3,2",options="header"]
+|===
+|Input |Check |Result
+|`examples/gal/decode16v8.pld`
+|GALasm assembly; actual JEDEC array evaluated against 64 input combinations
+|PASS
+|`examples/gal/bank22v10.pld`
+|GALasm assembly; actual JEDEC next-state/FLAG equations evaluated against 128 input/state combinations
+|PASS
+|Both `.jed` files
+|Fuse count, fuse checksum, transmission checksum and relevant mode/polarity/OE bits
+|PASS
+|`examples/verilog/glue.v`, `tb_glue.v`
+|Icarus simulation: 64 decoder cases and 128 state-transition cases, including reset priority, hold, pre-edge stability and FLAG
+|PASS, 192 cases
+|`tools/create_quartus_project.tcl`
+|Prepared Quartus project generator and CLI instructions
+|Not run with Quartus; no Altera fit result
+|===
+
+The JEDEC evaluator is deliberately limited to these two example architectures. It reads
+the assembled fuses rather than re-evaluating the source equations. For the registered
+22V10 it accounts for inverted internal feedback, checks the two registered cell modes,
+checks the combinational FLAG mode and verifies that EXT's output driver is disabled.
+It evaluates next-state behavior for every current state; it does not simulate physical
+clock edges, propagation delay, metastability or power-up. The Verilog simulation checks
+clocked behavioral semantics separately. Neither is a hardware test.
+
+The GAL16V8 test uses six relevant inputs; varying unused low address bits would add no
+decoder coverage because the design does not consume them. The 22V10 test uses RESET,
+LOAD, D0, D1, EXT and both current state bits. Its reset is synchronous, not the chip's
+dedicated asynchronous reset. Both examples use continuously driven outputs.
+
+== Reproduce
+
+From the workspace root:
+
+[source,shell]
+----
+python3 tools/check_gal.py
+bash tools/check_verilog.sh
+----
+
+The first command builds the local GALasm checkout with GCC, copies our `.pld` files
+into `output/gal/`, assembles them and verifies the results. Files `.jed`, `.pin`, `.chp`
+and `.fus` are retained there. The second prefers system Icarus tools when available;
+otherwise it uses the extracted project-local package with an explicit backend path.
+The design is ordinary Verilog; `-g2012` is used for the testbench's failure handling.
+`reports/validation.json` and the adjacent logs record the final execution and hashes.
+
+Generated JEDEC SHA-256:
+
+----
+decode16v8.jed  76194d98606a9b199d4e64f575796094037e0bd1e4ae4af367d49dd8ba25329b
+bank22v10.jed   570d3e29658e59e3a6a58257be4c4f89f391d3b84e8c235df7994588255608d6
+----
+
+== Tool provenance
+
+GALasm source: https://github.com/daveho/GALasm[upstream repository], commit
+`eeb06645a5ef4a2fd4563908167b9294059a9204`, dated 2026-10-09. Built with
+`make -C vendor/GALasm/src`. Its README retains upstream copyright and noncommercial
+restrictions. The clone is kept intact, apart from normal local compiler outputs.
+
+Digital source: https://github.com/hneemann/Digital[upstream repository], commit
+`d118dce079b6b8867024d40f9b14dfa667e52106`, dated 2026-10-08. Inspected only;
+its upstream files were not changed. See its GPLv3 license and the separate source audit.
+
+Icarus: CachyOS package `iverilog-13.0-1.1-x86_64_v3.pkg.tar.zst`, downloaded after
+network approval from the URL below and extracted under `vendor/iverilog/`.
+Its `.PKGINFO` records package version, architecture, dependencies and GPL licensing.
+The compiler reports Icarus Verilog 13.0 stable. This local binary is specific to this
+host architecture/runtime; install a suitable system package on other machines.
+
+----
+https://mirror.krfoss.org/cachyos/repo/x86_64_v3/cachyos-extra-v3/iverilog-13.0-1.1-x86_64_v3.pkg.tar.zst
+----
+
+No package manager installation, global PATH change, Quartus installation, vendor-fitter
+execution, USB/JTAG access or chip programming was performed.
+
+== Archived primary documents checked
+
+The Quartus archive directory is documented in the main report. Its Linux TAR member
+list was read and confirms the base installer and MAX device package; the archive was
+not fully extracted or installed. The local handbook was text-extracted and its relevant
+page was rendered and inspected:
+
+----
+/home/falken/_/wrk/prj/260707 vmexcalc ali - AL-2301 DJ-2301/!! -- ALTERA Quartus 130sp1webfree/quartusii_handbook_archive_130.pdf
+----
+
+At physical PDF page 796, printed Volume 1 page 18-2, its Synplify flow note states that
+Quartus versions 10.1 and later require TimeQuest; Classic timing examples refer to
+10.0 and earlier. This corrects an easy mistake when adapting very old MAX examples to
+the 13.0 SP1 toolchain. There is no claim here that the bundled, unconstrained project
+has met any timing requirement.
+
+Also checked the archived vendor MAX 3000A datasheet, June 2006 version 3.5:
+
+----
+/home/falken/_/inv/_SMD-soucastky-box/04/A4 - cpld altera/1 - 70x altera epm3064atc44-10n cpld max1 64c tqfp44 smd - 100MHz 3V3 (30kc)/intel m3000a.pdf
+----
+
+Its Table 1 gives the 64/128 macrocell capacities; the architecture section describes
+one configurable register per macrocell. Its I/O discussion distinguishes 5 V tolerant
+inputs from 2.5/3.3 V output supplies. The first page was rendered and visually checked
+against text extraction. Local inventory labels establish which package markings were
+recorded, not that any particular physical chip has been identified or tested today.
+
+== Remaining for a board-ready Altera design
+
+Install/select the appropriate Quartus version and device package; finalize a real
+controller specification; supply package pin, I/O voltage and clock/interface timing
+constraints; run synthesis, fitting and timing review; then program and test the actual
+board. Until then the prepared Tcl project is a study template, and the generated GAL
+JEDEC files have illustrative pin assignments. The 7xsys MMU has not been implemented
+or fitted by this task.

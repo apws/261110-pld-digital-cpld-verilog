@@ -1,0 +1,320 @@
+= Ari: designing GALs and Altera CPLDs directly from a function specification
+:title: {docname}
+:revdate: 2026-11-10
+:toc:
+:sectnums:
+
+== Answer for Falken and 7xsys
+
+Yes. You can describe a decoder, register, counter, bus multiplexer or small state
+machine in ordinary words, a truth table or equations. I can turn that into a precise
+specification, equations or Verilog, a pin-assignment proposal, and executable checks.
+Java Digital is optional. A real assembler/fitter must generate the programming data;
+I would not invent fuse maps from a prose description and claim they were ready for a chip.
+
+For small GALs, equations plus GALasm or Galette are the shortest route. For your
+Altera parts, Verilog plus Quartus command-line tools is the practical route.
+We can keep design entry, simulation, project generation, compilation and report review
+entirely in files and CLI commands. The Quartus graphical IDE is not required for those steps.
+See https://github.com/daveho/GALasm[GALasm],
+https://github.com/simon-frankau/galette[Galette] and
+https://docs.altera.com/r/docs/683432/25.3/quartus-prime-pro-edition-user-guide-scripting/compilation-with-quartus_sh-flow[Altera's CLI flow documentation].
+The latter documents the command interface; it does not establish legacy device support.
+
+== Correct device names and tool choices
+
+[cols="1,2,2,3",options="header"]
+|===
+|Part mentioned |Actual family / capacity |Practical backend |Important distinction
+|GAL16V8 / GAL22V10
+|8 / 10 output macrocells
+|GALasm or Galette to JEDEC; compatible programmer
+|Equations can express registered behavior, within the chip's clock and product-term limits.
+|EPM3064A
+|MAX 3000A, 64 macrocells
+|Quartus II Web 13.0 SP1, including MAX support
+|Package and speed suffix are essential; your inventory includes EPM3064ATC44-10N.
+|EPM3128A
+|MAX 3000A, 128 macrocells
+|Same legacy Quartus generation
+|Your inventory includes EPM3128ATC100-10N and -5N.
+|“EPM1170”
+|Likely EPM1270, MAX II, 1,270 logic elements
+|Quartus Prime Lite with MAX II device support; legacy 13.0 SP1 is also an option
+|Treat the correction as an inference until the actual package marking is checked.
+|EPM2210
+|MAX II, 2,210 logic elements
+|Same MAX II flow
+|Your inventory has EPM2210F256C4N; 1,700 “equivalent macrocells” is a comparison figure, not its LE count.
+|ATF1502 / 1504 / 1508
+|32 / 64 / 128 macrocells
+|CUPL/TT2 + Microchip fitter; or experimental Yosys + vendor fitter
+|This backend does not target Altera devices.
+|===
+
+“MAX-I” is understandable informal shorthand here, but EPM3xxxA should be identified
+as *MAX 3000A*. MAX II has a LUT/logic-element architecture, so its LE count is not
+interchangeable with a MAX 3000A macrocell count. See the vendor's
+https://cdrdv2-public.intel.com/655094/max2_mii5v1.pdf[MAX II handbook], and the local
+MAX 3000A datasheet noted in the experiment record. ATF capacities are listed in
+https://onlinedocs.microchip.com/oxy/GUID-F1454631-FFF9-4807-A296-41526776DBA8-en-US-1/GUID-DDCDDB04-94DA-44E4-AB94-548EDFEC3B45.html[Microchip's fitter guide].
+
+Altera's https://www.altera.com/developers/software/device-support[device support table]
+lists 13.0 SP1 as the final MAX 3000A release. Its
+https://docs.altera.com/api/khub/documents/SukEmlnXTM8Wo_2ISpi1wg/content[14.0 release notes]
+also show removal starting with 13.1. A newer Quartus installation cannot simply replace
+that legacy fitter. Conversely, the official
+https://www.altera.com/downloads/fpga-development-tools/quartus-prime-lite-edition-design-software-version-25-1-linux[Quartus Lite 25.1 Linux download page]
+explicitly provides a MAX II/MAX V device package. MAX II does not force us to use the
+old MAX 3000A toolchain. Pro Edition support should not be assumed from the Quartus name.
+
+== How simple can the specification be?
+
+This is sufficient to begin an illustrative GAL design:
+
+----
+16-bit CPU address bus, active-low MREQ/RD/WR.
+Select ROM at 0000-1FFF and RAM at 8000-FFFF, only during MREQ.
+Produce separate memory read and write strobes. No state or reset.
+Use a GAL16V8 DIP20; propose pins before wiring a board.
+----
+
+For a registered design add, for example:
+
+----
+Two-bit bank register. Rising-edge clock. RESET high clears to zero.
+Otherwise LOAD high stores D1:D0; otherwise hold. RESET wins over LOAD.
+FLAG high when EXT is high and the current bank is 1.
+Use a GAL22V10; pin 14 may be used as an input.
+----
+
+These exact behaviors are implemented in `examples/gal/`. The combined Verilog model
+is `examples/verilog/glue.v`. The address decoder ignores A12:A0 because those bits
+cannot change selection within an 8 KiB region. Selection and read/write qualification
+are deliberately separate. This is an example specification, not a recovered 7xsys bus contract.
+
+Before a real board build, we also need the complete chip/package/speed grade,
+available pins and clocks, signal voltage levels, reset/start-up behavior, output polarity,
+bus ownership/tri-state rules and relevant timing numbers. Unspecified initial register
+values are not a substitute for a reset contract. A CPU write strobe must be adapted to
+the chosen clock domain; it cannot just become `bank_we` without a timing analysis.
+
+== GAL equations without Digital
+
+In GALasm the pin list follows physical package order, not the visual left/right order
+of a schematic symbol. `/` means NOT, `*` AND, `+` OR. `.R` specifies registered data,
+`.T` a combinational tri-state output and `.E` its enable. Do not copy these suffixes
+unmodified into PALASM or CUPL; their languages differ.
+
+Our decoder uses positive equation names ending in `n`; its equations explicitly produce
+low-true outputs. For example:
+
+[source,text]
+----
+ROMn = MREQn + A15 + A14 + A13
+Q0.R = /RESET * LOAD * D0 + /RESET * /LOAD * Q0
+----
+
+The first equation is low only for a memory access in the ROM region. The second
+expresses a synchronous reset/load/hold register. GALasm does not turn arbitrary nested
+software expressions into an optimized implementation: use a legal sum of products,
+minimize it when needed and inspect cell/product-term usage.
+The inspected syntax/behavior is documented in
+https://github.com/daveho/GALasm/blob/eeb06645a5ef4a2fd4563908167b9294059a9204/GALASM-SPEC.md[the checked GALasm specification].
+
+[source,shell]
+----
+make -C vendor/GALasm/src
+vendor/GALasm/src/galasm -v examples/gal/decode16v8.pld
+# Preferred local demo command: keeps generated artifacts in output/gal/.
+python3 tools/check_gal.py
+----
+
+The assembler produces `.jed` plus `.pin`, `.chp` and `.fus` reports. A successfully
+generated JEDEC proves assembly, not correct external wiring or operating frequency.
+Here the actual JEDEC equations are also evaluated against all example input/state
+combinations; see the experiment record.
+
+GALasm is useful for this local experiment, but its checked
+https://github.com/daveho/GALasm/blob/eeb06645a5ef4a2fd4563908167b9294059a9204/README[README]
+contains a noncommercial-use restriction. For a reusable tool implementation,
+https://github.com/simon-frankau/galette[MIT-licensed Galette] is worth considering.
+It is written in Rust and accepts largely GALasm-compatible source. It was researched,
+not installed or tested here. Generated example logic is our own; upstream tools retain
+their own terms.
+
+PALASM remains a historical equation-language option when an existing project already
+uses it. CUPL offers equations, fields and state descriptions; Microchip now publishes
+https://www.microchip.com/en-us/development-tool/wincupl[WinCUPL II], so “only the old
+WinCUPL exists” is no longer accurate. Its
+https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/UserGuides/WinCUPL-II-User-Guide-DS20007126.pdf[user guide]
+documents syntax such as `!`, `&`, `#` and `$` for NOT/AND/OR/XOR. Its installed compiler,
+device library and fitter still matter; Windows/Wine operation and exact command options
+were not tested in this workspace. PALASM, GALasm and CUPL files should not be treated
+as interchangeable merely because they can all use a `.pld` extension.
+
+== What the GAL hardware can actually do
+
+An output macrocell can hold state; a GAL is not limited to stateless 74xx replacements.
+A counter or mux-with-feedback can be expressed as D-input equations. This does not
+make every simulated 74xx device implementable. Register count, product terms, feedback,
+clocking and asynchronous controls must all map onto the selected chip.
+
+A 16V8 changes global operating mode when registers are used; clock/OE pins and feedback
+availability then change. A 22V10 provides ten configurable output cells with unequal
+product-term budgets. Assigning a complicated equation to the wrong output can prevent
+fitting even with spare cells. Neither device offers arbitrary independent clocks for
+each register. See Microchip's
+https://www.microchip.com/content/dam/mchp/documents/OTH/ProductDocuments/DataSheets/Atmel-0425-PLD-ATF16V8C-Datasheet.pdf[16V8C datasheet]
+and https://www.microchip.com/content/dam/mchp/documents/OTH/ProductDocuments/DataSheets/doc0735.pdf[22V10C datasheet].
+
+Outputs can often serve as inputs, but the valid choices are mode-specific. Unrestricted
+pin remapping is not possible. The local 22V10 example proves the useful case: pin 14,
+normally output-capable, is an input named EXT, with its driver disabled in the JEDEC.
+The local audit explains which of these capabilities Digital currently exposes.
+
+== Verilog to Altera CPLD entirely through the CLI
+
+Use conservative synthesizable Verilog for shared behavior. Add a testbench for functional
+simulation, then let the correct Quartus version synthesize and fit it to the exact part.
+This avoids forcing larger stateful controllers through a GAL equation front end.
+
+[source,shell]
+----
+# Already runnable in this workspace: behavioral simulation.
+bash tools/check_verilog.sh
+
+# Prepared, not run here: use the legacy Quartus II 13.0 SP1 executable.
+quartus_sh -t tools/create_quartus_project.tcl MAX3000A EPM3064ATC44-10 output/q3064
+cd output/q3064
+quartus_sh --flow compile glue
+----
+
+Other study-project invocations, from the workspace root, are:
+
+[source,shell]
+----
+quartus_sh -t tools/create_quartus_project.tcl MAX3000A EPM3128ATC100-10 output/q3128
+quartus_sh -t tools/create_quartus_project.tcl "MAX II" EPM1270T144C5 output/q1270
+quartus_sh -t tools/create_quartus_project.tcl "MAX II" EPM2210F256C4 output/q2210
+----
+
+The EPM1270 package/speed here is illustrative. Quartus device names commonly omit
+the procurement suffix `N`; confirm each name against the installed device database.
+The Tcl file creates a new study directory and `.qpf`/`.qsf` project. It refuses to
+overwrite an existing destination. It deliberately supplies no invented board pins,
+I/O standards or external timing values, and writes an `UNCONSTRAINED.txt` marker.
+It has not been executed with Quartus here.
+
+For a real design add package pin assignments with `set_location_assignment`, correct
+I/O-standard assignments, and timing constraints for clock and external paths. Use the
+timing analyzer supported by the selected family/version. The archived Quartus 13.0
+handbook says that versions 10.1 and later require TimeQuest; older examples using the
+Classic Timing Analyzer apply to 10.0 and earlier. Prepare SDC constraints for our
+13.0 SP1 study rather than copying those old Classic assignments. Review synthesis
+warnings, inferred registers/latches, fitted pin assignments,
+cell/product-term usage, timing and unconstrained paths. The fitter's success is
+necessary but is not itself proof that the board's timing contract is met.
+
+Quartus normally produces a `.pof` for these nonvolatile CPLDs. Programming is a separate
+step through a compatible JTAG cable/chain. Read-only discovery commands are
+`quartus_pgm -l` and `jtagconfig`. After checking the exact board, cable and chain position,
+an example write/verify command is:
+
+[source,shell]
+----
+# Example only, not executed: overwrites the selected device configuration.
+quartus_pgm -c 1 -m jtag -o 'pv;build/glue.pof@1'
+----
+
+The semicolon must be quoted for a shell. Cable 1 and chain position 1 are placeholders.
+See the vendor's https://community.altera.com/t5/s/jgyke29768/attachments/jgyke29768/knowledge-base/2166/1/qts-pro-ug-programmer-201tech_review.pdf[programmer guide]
+for CLI operation syntax, and check the installed legacy executable's help for its options.
+No programmer or target device was accessed in this task.
+
+== Tools already archived on this machine
+
+Found this directory without installing or modifying its contents:
+
+----
+/home/falken/_/wrk/prj/260707 vmexcalc ali - AL-2301 DJ-2301/!! -- ALTERA Quartus 130sp1webfree/
+----
+
+It contains Linux and Windows `Quartus-web-13.0.1.232-*.tar` archives, programmer/help
+installers, the archived 13.0 handbook and release notes. Listing the Linux archive
+confirmed `components/QuartusSetupWeb-13.0.1.232.run` and
+`components/max_web-13.0.1.232.qdz` are present. This is promising for an isolated
+legacy CLI environment. Archive presence has not established installer integrity,
+modern Linux compatibility, a completed installation or a successful device compile.
+
+No Quartus, Yosys or Verilog simulator was initially on PATH. GALasm was built locally;
+Icarus Verilog was subsequently extracted locally for simulation. A future Quartus setup
+should preserve installer hashes, device packages, compiler version and an isolated
+runtime/VM as necessary, alongside the final `.pof` and reports.
+
+== ATF150x and fully open-source alternatives
+
+Digital's ATF150x path exports an intermediate representation and runs the vendor fitter;
+it is not an independent open ATF fitter. Another CLI option is
+https://github.com/hoglet67/atf15xx_yosys[hoglet67's experimental flow]: Verilog through
+Yosys to EDIF, then `fit1502/4/8.exe` to a JEDEC and fit report. Its README describes
+Windows and Linux/Wine operation and notes EDIF bus-index handling. None of this was
+executed here. It demonstrates that a graphical editor is optional, while the vendor
+backend remains required by that flow.
+
+There is also real open ATF fuse-map work:
+https://whitequark.github.io/prjbureau/intro.html[Project Bureau] documents the architecture
+and supplies a chip database and experimental manipulation tools. Its published table
+lists complete database/programming support for ATF1502AS/ASV/ASL, near-complete database
+coverage with untested programming for the corresponding 1504 parts, and partial coverage
+for 1508. This is relevant research, but a database is not by itself a complete fitter.
+Digital's documentation about undisclosed vendor maps describes its own integration;
+it should not be read as proof that no public reverse-engineered map exists today.
+
+Yosys alone is also not a replacement fitter for the specified Altera parts. Open-source
+simulation can validate portable RTL, but a programmer such as an SVF player does not
+perform synthesis or placement/routing. We found
+https://github.com/emtenet/max-ii-fuse-map[MAX II] and
+https://github.com/emtenet/max-v-fuse-map[MAX V] experimental fuse-map research; these
+should not be presented as a proven general Verilog-to-EPM1270/EPM2210 production flow.
+For this 7xsys work, Quartus is the supported backend to prepare first.
+
+== Applying this to the 7xsys controller
+
+Your local `7xsys CPLD BASE MMU.txt` describes a unified paged MMU, MMIO and possible
+2/8/16-bank variants with eight-bit selectors. A plain storage lower bound is useful:
+four eight-bit bank registers need 32 flip-flops, eight need 64, and sixteen need 128,
+before MMIO, reset, decoding and mux logic. On MAX 3000A a macrocell has at most one
+register, so an eight-bank implementation already consumes the EPM3064A register budget;
+sixteen banks exceed it. A 128-bit bank table similarly leaves no register margin in
+EPM3128A. These are register-budget observations, not fit results. MAX II's larger LE
+budget is more promising, but I/O count, routing and delay still need an actual fit.
+
+I suggest an initial real design with four 16 KiB logical windows, explicit eight-bit
+page-register behavior and a written reset/MMIO contract. Then compare that *same*
+Verilog and testbench on EPM3064A, EPM3128A and an available MAX II part. Actual fitter
+reports will tell us whether to simplify the small device or use the larger one.
+The bundled two-bit example establishes the workflow; it is not that MMU implementation.
+
+For a retro bus also distinguish supply voltage, input tolerance, output-high compatibility
+and bank voltage. The local MAX 3000A datasheet specifies 5 V tolerant inputs and 2.5/3.3 V
+output-driver supplies; that does not mean a rail-to-rail 5 V output. MAX II requires its
+own interface review. Check the exact device handbook and board interface.
+
+== Answer to the quoted proposal about extending Digital
+
+Feasible, with a limited first target. The current code already implements registered
+GAL output data, so “add all flip-flop support” is not the right starting point. A better
+patch would expose one currently missing hardware feature, document the allowed modes
+and add JEDEC-level regression tests plus hardware comparison.
+
+Useful targets include mode-aware GAL input/output assignment, clock-as-data when the
+device mode permits it, explicit output enable, and 22V10 reset/preset controls. Supporting
+sequential 74xx components requires converting their semantics to next-state equations;
+removing an exporter restriction alone will not synthesize an arbitrary latch, ripple
+counter or independently clocked register into the available GAL cells.
+
+The smaller immediate task for me is to produce equation/Verilog sources and verify them
+through existing compilers. Extending Digital remains a separate, achievable development
+project. See link:261110-2209-REVIEW-Digital-exporters.adoc[the pinned source audit] for
+specific classes, existing capabilities and a staged patch proposal.

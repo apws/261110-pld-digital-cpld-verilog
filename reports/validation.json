@@ -1,0 +1,58 @@
+{
+  "completed_utc": "2026-11-10T21:28:44.383242+00:00",
+  "checks": {
+    "gal": {
+      "command": [
+        "python3",
+        "tools/check_gal.py"
+      ],
+      "exit_code": 0,
+      "log": "reports/gal.log"
+    },
+    "verilog": {
+      "command": [
+        "bash",
+        "tools/check_verilog.sh"
+      ],
+      "exit_code": 0,
+      "log": "reports/verilog.log"
+    },
+    "documentation": {
+      "command": [
+        "asciidoctor",
+        "--failure-level",
+        "WARN",
+        "-D",
+        "output/html",
+        "docs/261110-2209-RESEARCH-PLD-GAL-CPLD-design.adoc",
+        "docs/261110-2209-REVIEW-Digital-exporters.adoc",
+        "docs/261110-2209-TEST-local-examples.adoc"
+      ],
+      "exit_code": 0,
+      "log": "reports/documentation.log"
+    },
+    "tcl_syntax": {
+      "exit_code": 0,
+      "log": "reports/tcl-syntax.log",
+      "scope": "info complete only; no Quartus APIs executed"
+    }
+  },
+  "sha256": {
+    "examples/gal/bank22v10.pld": "b9c73d2939b958b5bdaf0dcc31940f2023c6a47cb9215b1548e5fa01419199cf",
+    "examples/gal/decode16v8.pld": "770ed05f45914bff2a18cf53e7ca8be53f6ad6b6d87e0a081ed681fb87d4f63d",
+    "examples/verilog/glue.v": "2c828dad4a9d151b06d3e74c8c8fba1304e456bb8f440bff06435e12c22aa89d",
+    "examples/verilog/tb_glue.v": "a0cbf6ed0fbae220fbdf7b98887784dee1c4fc382e48d04572c1866eec96674d",
+    "output/gal/bank22v10.jed": "570d3e29658e59e3a6a58257be4c4f89f391d3b84e8c235df7994588255608d6",
+    "output/gal/decode16v8.jed": "76194d98606a9b199d4e64f575796094037e0bd1e4ae4af367d49dd8ba25329b",
+    "tools/check_gal.py": "b7e2c76d0c6f42f423807518486112d32ccdf7577e208a208af3613cca08a2e9",
+    "tools/check_verilog.sh": "c0fa2be5dcaa8b9d87af520a4ea20f2774fb9bb072dd476bbf1e423af241bd1e",
+    "tools/create_quartus_project.tcl": "7b451721316697720e109df10942466830c1c7b2438c237162da540d24ebbf07",
+    "vendor/iverilog/package.pkg.tar.zst": "c83992007fc460e8ec928d3f395a2f2d7399b0f66baaf5d1aad58d3d44893930"
+  },
+  "source_commits": {
+    "Digital": "d118dce079b6b8867024d40f9b14dfa667e52106",
+    "GALasm": "eeb06645a5ef4a2fd4563908167b9294059a9204"
+  },
+  "quartus_executed": false,
+  "hardware_accessed": false
+}

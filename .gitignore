@@ -1,0 +1,7 @@
+# Upstream checkouts, downloaded packages and locally generated files.
+/vendor/
+/output/
+/tmp/
+/reports/reference-pages/
+__pycache__/
+*.pyc

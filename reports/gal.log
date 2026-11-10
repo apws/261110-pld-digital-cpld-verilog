@@ -1,0 +1,24 @@
+make: Entering directory '/home/falken/_/wrk/ver/261110-pld-digital-cpld-verilog/vendor/GALasm/src'
+make: Nothing to be done for 'all'.
+make: Leaving directory '/home/falken/_/wrk/ver/261110-pld-digital-cpld-verilog/vendor/GALasm/src'
+GALasm 2.1, Portable GAL Assembler
+Copyright (c) 1998-2003 Alessandro Zummo. All Rights Reserved
+Original sources Copyright (c) 1991-96 Christian Habermann
+
+Assembler Phase 1 for "/home/falken/_/wrk/ver/261110-pld-digital-cpld-verilog/output/gal/decode16v8.pld"
+Assembler Phase 2 for "/home/falken/_/wrk/ver/261110-pld-digital-cpld-verilog/output/gal/decode16v8.pld"
+Defaulting to simple mode
+GAL16V8; Operation mode: simple; Security fuse off
+Assembling successfully completed.
+GALasm 2.1, Portable GAL Assembler
+Copyright (c) 1998-2003 Alessandro Zummo. All Rights Reserved
+Original sources Copyright (c) 1991-96 Christian Habermann
+
+Assembler Phase 1 for "/home/falken/_/wrk/ver/261110-pld-digital-cpld-verilog/output/gal/bank22v10.pld"
+Assembler Phase 2 for "/home/falken/_/wrk/ver/261110-pld-digital-cpld-verilog/output/gal/bank22v10.pld"
+GAL22V10; Security fuse off
+Assembling successfully completed.
+PASS: GAL16V8 JEDEC decoder, all 64 input combinations
+PASS: GAL22V10 JEDEC next-state/flag, all 128 input/state combinations
+570d3e29658e59e3a6a58257be4c4f89f391d3b84e8c235df7994588255608d6 output/gal/bank22v10.jed
+76194d98606a9b199d4e64f575796094037e0bd1e4ae4af367d49dd8ba25329b output/gal/decode16v8.jed

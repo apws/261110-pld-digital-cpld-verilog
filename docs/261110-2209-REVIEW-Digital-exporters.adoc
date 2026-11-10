@@ -1,0 +1,133 @@
+= Digital GAL and ATF150x support: source audit and feasible improvements
+:title: {docname}
+:revdate: 2026-11-10
+:toc:
+
+== Audit boundary
+
+Inspected https://github.com/hneemann/Digital/tree/d118dce079b6b8867024d40f9b14dfa667e52106[Digital commit d118dce079b6b8867024d40f9b14dfa667e52106],
+whose latest commit is dated 2026-10-08. The local shallow checkout is `vendor/Digital/`.
+This was a source and existing-test review. Digital was not built, launched, modified
+or exercised against a programmer. A current source finding is not proof that every
+older downloadable Digital release behaves identically.
+
+The quoted discussion correctly identifies useful improvement areas, but its strongest
+claim about the absence of registered GAL support does not describe this source tree.
+The distinctions below matter before asking an AI to implement anything.
+
+== Registered logic is already implemented
+
+https://github.com/hneemann/Digital/blob/d118dce079b6b8867024d40f9b14dfa667e52106/src/main/java/de/neemann/digital/builder/Gal16v8/Gal16v8JEDECExporter.java[Gal16v8JEDECExporter]
+checks whether its builder has sequential outputs. With registers it sets the registered
+global mode, writes eight product terms for registered cells, and seven for combinational
+outputs sharing that mode, after consuming an OE row. Without registers it selects
+simple combinational mode. Therefore a basic common-clock state machine is already
+within the exporter's intended capabilities.
+
+The existing
+https://github.com/hneemann/Digital/blob/d118dce079b6b8867024d40f9b14dfa667e52106/src/test/java/de/neemann/digital/builder/Gal16v8/Gal16V8JEDECExporterTest.java[GAL16V8 exporter test]
+contains a sequential stepper controller and compares generated fuse data with an
+expected JEDEC stream. I read this test; I did not execute the upstream Java suite.
+It is direct evidence of intended sequential support, rather than a claim inferred only
+from the general Digital feature list.
+
+https://github.com/hneemann/Digital/blob/d118dce079b6b8867024d40f9b14dfa667e52106/src/main/java/de/neemann/digital/builder/Gal22v10/Gal22v10JEDECExporter.java[Gal22v10JEDECExporter]
+likewise chooses registered or combinational mode per output cell. It uses the unequal
+product-term budgets 8, 10, 12, 14, 16, 16, 14, 12, 10, 8. In the direct JEDEC path,
+used outputs are always enabled; there is no exported user-controlled OE expression.
+The implementation fills data rows, without exposing the shared asynchronous reset
+or synchronous preset equations as general user controls.
+
+The
+https://github.com/hneemann/Digital/blob/d118dce079b6b8867024d40f9b14dfa667e52106/src/main/java/de/neemann/digital/builder/Gal22v10/Gal22v10CuplExporter.java[22V10 CUPL exporter]
+explicitly emits zero-valued `ar` and `sp` definitions and attaches them to sequential
+outputs. Adding useful reset/preset control would require a representation and front-end
+semantics, not simply changing one fuse constant.
+
+== The analysis front end has its own restrictions
+
+The
+https://github.com/hneemann/Digital/blob/d118dce079b6b8867024d40f9b14dfa667e52106/src/main/java/de/neemann/digital/analyse/ModelAnalyser.java[model analyzer]
+recognizes D flip-flops as state elements, exposes current-state values as inputs and
+next-state values as outputs, and requires each flip-flop to be attached to the single
+recognized clock. Other remaining stateful primitive classes are rejected. It can split
+multi-bit D flip-flops into individual bits. It also sets a 24-input analysis limit;
+truth/state-table enumeration grows exponentially with inputs plus state bits.
+
+Before that analysis, the
+https://github.com/hneemann/Digital/blob/d118dce079b6b8867024d40f9b14dfa667e52106/src/main/java/de/neemann/digital/analyse/SubstituteLibrary.java[substitution library]
+already provides decompositions for JK/T flip-flops, counters, presettable counters and
+registers. Consequently “only purely combinational components can ever be exported”
+is too broad. A particular 74xx library subcircuit may still fail because of asynchronous
+controls, clocking, remaining unsupported state primitives, analysis size or target capacity.
+A NOR-gate feedback loop is not automatically recognized as a supported state register.
+
+An improvement must distinguish simulation, analysis/decomposition and device mapping.
+A 74xx component running successfully in the simulator proves none of the later stages.
+Likewise, a GAL22V10 having an asynchronous reset resource does not make every
+asynchronously controlled 74xx component synthesizable by this front end.
+
+== Restricted GAL pin assignment is confirmed
+
+The 16V8 direct JEDEC exporter exposes inputs 2-9 and outputs 12-19. It excludes pins 1
+and 11 from ordinary input assignment even in combinational operation. The 22V10
+exporter exposes inputs 2-11 plus 13, and outputs 14-23; it excludes pin 1 as an ordinary
+data input. Both use fixed input and output lists, rather than the bidirectional list
+facility. Their CUPL exporters use the same restricted pin sets.
+
+This sacrifices legal hardware configurations: using an output-capable cell as an input,
+and using clock-associated pins as data when the hardware mode allows it. The precise
+16V8 feedback restrictions change by global mode. Merely placing every pin on both
+lists would accept configurations the silicon cannot implement. Both array-column
+mapping and unused output-driver configuration must change together with validation.
+
+The local `bank22v10.pld` example demonstrates a legal configuration through GALasm:
+EXT is assigned to pin 14 and used only on equation right-hand sides. Its `.pin` report
+marks it as input; the independent fuse check confirms its output-enable row is disabled.
+That example is a useful future regression case for a Digital patch.
+
+== ATF150x already has a different pin model and external fitting
+
+https://github.com/hneemann/Digital/blob/d118dce079b6b8867024d40f9b14dfa667e52106/src/main/java/de/neemann/digital/builder/ATF150x/ATFDevice.java[ATFDevice]
+defines package-specific pin lists and clock pins for ATF1502/1504/1508 variants. Its TT2
+exporter uses `setAvailBidirectional`, and the ATF CUPL exporter does too. Here this
+allows assignment as an input or an output; the method name alone does not prove full
+run-time bidirectional bus synthesis.
+
+https://github.com/hneemann/Digital/blob/d118dce079b6b8867024d40f9b14dfa667e52106/src/main/java/de/neemann/digital/builder/tt2/StartATF150xFitter.java[StartATF150xFitter]
+invokes `fit1502.exe`, `fit1504.exe` or `fit1508.exe`, sets `FITTERDIR`, and uses Wine on
+Linux. Thus the IDE's integration is convenient, but vendor fitting is still doing the
+device implementation. Extending a GAL writer will not provide an Altera backend.
+
+The maintainer's historical
+https://github.com/hneemann/Digital/issues/250[2019 discussion of latch/clock limitations]
+also describes an educational scope and incomplete use of ATF resources. It is useful
+context, not a substitute for checking today's code. Public ATF fuse-map research now
+exists through https://whitequark.github.io/prjbureau/intro.html[Project Bureau]; the
+Digital source reviewed here still follows its external-fitter path.
+
+== Proposed development stages
+
+. Start with a 22V10 static input-on-output-pin feature. Extend its pin capabilities,
+  map the input signal into the correct array columns and disable that cell's output
+  driver. Test the EXT-at-pin14 case, ordinary outputs and invalid pin collisions.
+. Add clock-as-data only where the hardware allows it. Check both combinational and
+  registered cases explicitly; preserve a precise rule for the shared clock.
+. Add output-enable expressions with distinct data and enable semantics. Verify driven
+  versus high-impedance behavior and feedback choice. Do not equate “not selected” with
+  a logic-high output.
+. Implement mode-aware 16V8 pin validation and mapping with tests for simple, complex
+  and registered mode. Include negative cases for unavailable feedback and reserved pins.
+. Expose 22V10 reset/preset with explicit shared-resource and priority rules. Then add
+  individual sequential 74xx decompositions where their behavior matches the device.
+
+At each stage compare logical behavior and meaningful fuse fields against another
+assembler, then check programmed hardware with known vectors. Two correct compilers
+may choose different minimized equations, signature bits or unused fuse values, so
+byte-for-byte JEDEC equality is not a universal correctness test.
+
+AI assistance is feasible for these bounded changes: I can inspect the code, implement
+one feature, add positive and negative cases and review its generated JEDEC. It is not
+reasonable to promise arbitrary 74xx circuits, multiple independent clock domains or
+a complete new CPLD fitter as a small exporter patch. No Digital modifications were
+requested or made in this initial research workspace.
